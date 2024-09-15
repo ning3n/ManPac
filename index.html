@@ -1,0 +1,401 @@
+<html><head><base href="https://api.websim.io/PacmanInsideOut/%20add%20walls%20like%20a%20labirynth,%20all%20the%20enemies%20move%20inside%20the%20labyrinth,%20slow%20paced%20and%20through%20all%20the%20labyrinth,%20the%20enemies%20look%20like%20ghosts,%20the%20game%20starts%20when%20pressing%20the%20enter%20button,%20at%20the%20beggining%20it%20shows%20a%20%22Press%20enter%20to%20start%22%20text%20right%20at%20the%20middle,%20you%20can%20pause%20using%20the%20spacebar,%20big%20balls%20spawn%20every%2010%20seconds.%20when%20winning%20there's%202%20more%20random%20maps%20with%20the%20same%20functionality,%20there%20are%20no%20enemies%20outside%20the%20labyrinth,%20when%20eating%20all%20the%20enemies%20and%20eating%20all%20the%20small%20balls%20it%20shows%20%22You%20win!%22%20and%20changes%20to%20a%20different%20map%20with%20the%20same%20functionality,%20the%20score%20resets%20to%200%20when%20you%20lose">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pacman: Inside Out Labyrinth Edition</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #222;
+    font-family: Arial, sans-serif;
+  }
+  #gameCanvas {
+    border: 2px solid #fff;
+  }
+  #message {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    color: #fff;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="600" height="600"></canvas>
+<div id="message">Press Enter to Start</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const messageDiv = document.getElementById('message');
+
+const cellSize = 30;
+const gridSize = 20;
+const pacmanSize = cellSize - 2;
+
+let pacman = { x: 1, y: 1, direction: 'right' };
+let ghosts = [];
+
+let dots = [];
+let powerPellets = [];
+
+let powerMode = false;
+let powerModeTimer = 0;
+let score = 0;
+let gameStarted = false;
+let gamePaused = false;
+let currentLevel = 0;
+let bigBallTimer = 0;
+
+const mazes = [
+  [
+    "####################",
+    "#........##........#",
+    "#.##.###.##.###.##.#",
+    "#.##.###.##.###.##.#",
+    "#.##......#......#.#",
+    "#.##.##.####.##.##.#",
+    "#......#....#......#",
+    "####.###.##.###.####",
+    "#......#....#......#",
+    "#.##.###.##.###.##.#",
+    "#.##......#......#.#",
+    "#.##.###.##.###.##.#",
+    "#.##.###.##.###.##.#",
+    "#........##........#",
+    "####################"
+  ],
+  [
+    "####################",
+    "#..#...............#",
+    "#..#.#######.#####.#",
+    "#....#.....#.#...#.#",
+    "####.#.###.#.#.#.#.#",
+    "#....#.#.#.#...#.#.#",
+    "#.####.#.#.#####.#.#",
+    "#......#.#.......#.#",
+    "#.######.#######.#.#",
+    "#.#....#.......#.#.#",
+    "#.#.##.#######.#.#.#",
+    "#.#.##.........#...#",
+    "#.#.############.#.#",
+    "#................#.#",
+    "####################"
+  ],
+  [
+    "####################",
+    "#................#.#",
+    "#.##########.###.#.#",
+    "#.#........#.#.#...#",
+    "#.#.######.#.#.#.#.#",
+    "#.#......#.#...#.#.#",
+    "#.######.#.#####.#.#",
+    "#........#.......#.#",
+    "########.#######.#.#",
+    "#........#.....#.#.#",
+    "#.########.###.#.#.#",
+    "#..........#.#.#...#",
+    "#.##########.#.###.#",
+    "#................#.#",
+    "####################"
+  ]
+];
+
+let maze = mazes[currentLevel];
+
+function initializeLevel() {
+  maze = mazes[currentLevel];
+  dots = [];
+  powerPellets = [];
+  ghosts = [];
+  for (let y = 0; y < maze.length; y++) {
+    for (let x = 0; x < maze[y].length; x++) {
+      if (maze[y][x] === '.') {
+        dots.push({ x, y });
+      }
+    }
+  }
+  pacman = { x: 1, y: 1, direction: 'right' };
+  
+  // Place ghosts inside the labyrinth
+  const ghostColors = ['#FFD700', '#4169E1', '#FF6347', '#9932CC', '#3CB371'];
+  const ghostCharacters = ['Joy', 'Sadness', 'Anger', 'Fear', 'Disgust'];
+  let ghostCount = 0;
+  while (ghostCount < 5) {
+    const x = Math.floor(Math.random() * maze[0].length);
+    const y = Math.floor(Math.random() * maze.length);
+    if (maze[y] && maze[y][x] === '.' && !ghosts.some(ghost => ghost.x === x && ghost.y === y)) {
+      ghosts.push({
+        x: x,
+        y: y,
+        color: ghostColors[ghostCount],
+        character: ghostCharacters[ghostCount]
+      });
+      ghostCount++;
+    }
+  }
+
+  powerMode = false;
+  powerModeTimer = 0;
+  bigBallTimer = 0;
+}
+
+function drawMaze() {
+  ctx.fillStyle = '#0000FF'; // Blue walls
+  for (let y = 0; y < maze.length; y++) {
+    for (let x = 0; x < maze[y].length; x++) {
+      if (maze[y][x] === '#') {
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+      }
+    }
+  }
+}
+
+function drawPacman() {
+  ctx.beginPath();
+  ctx.arc(pacman.x * cellSize + cellSize / 2, pacman.y * cellSize + cellSize / 2, pacmanSize / 2, 0, 2 * Math.PI);
+  ctx.fillStyle = 'black';
+  ctx.fill();
+  ctx.closePath();
+
+  // Draw red eyes
+  ctx.beginPath();
+  ctx.arc(pacman.x * cellSize + cellSize / 2 - 5, pacman.y * cellSize + cellSize / 2 - 5, 3, 0, 2 * Math.PI);
+  ctx.fillStyle = 'red';
+  ctx.fill();
+  ctx.closePath();
+
+  ctx.beginPath();
+  ctx.arc(pacman.x * cellSize + cellSize / 2 + 5, pacman.y * cellSize + cellSize / 2 - 5, 3, 0, 2 * Math.PI);
+  ctx.fillStyle = 'red';
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawGhosts() {
+  ghosts.forEach(ghost => {
+    ctx.beginPath();
+    ctx.moveTo(ghost.x * cellSize + cellSize / 2, ghost.y * cellSize + cellSize);
+    ctx.lineTo(ghost.x * cellSize, ghost.y * cellSize + cellSize);
+    ctx.quadraticCurveTo(ghost.x * cellSize, ghost.y * cellSize + cellSize / 2, ghost.x * cellSize + cellSize / 2, ghost.y * cellSize + cellSize / 2);
+    ctx.quadraticCurveTo(ghost.x * cellSize + cellSize, ghost.y * cellSize + cellSize / 2, ghost.x * cellSize + cellSize, ghost.y * cellSize + cellSize);
+    ctx.lineTo(ghost.x * cellSize + cellSize / 2, ghost.y * cellSize + cellSize);
+    ctx.fillStyle = powerMode ? '#8B4513' : ghost.color;
+    ctx.fill();
+    ctx.closePath();
+
+    // Eyes
+    ctx.beginPath();
+    ctx.arc(ghost.x * cellSize + cellSize / 3, ghost.y * cellSize + cellSize / 2, 3, 0, 2 * Math.PI);
+    ctx.arc(ghost.x * cellSize + 2 * cellSize / 3, ghost.y * cellSize + cellSize / 2, 3, 0, 2 * Math.PI);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+
+function drawDots() {
+  ctx.fillStyle = 'white';
+  dots.forEach(dot => {
+    ctx.beginPath();
+    ctx.arc(dot.x * cellSize + cellSize / 2, dot.y * cellSize + cellSize / 2, 2, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+
+function drawPowerPellets() {
+  ctx.fillStyle = 'white';
+  powerPellets.forEach(pellet => {
+    ctx.beginPath();
+    ctx.arc(pellet.x * cellSize + cellSize / 2, pellet.y * cellSize + cellSize / 2, 6, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.closePath();
+  });
+}
+
+function checkCollisions() {
+  // Check dot collisions
+  dots = dots.filter(dot => !(dot.x === pacman.x && dot.y === pacman.y));
+
+  // Check power pellet collisions
+  powerPellets = powerPellets.filter(pellet => {
+    if (pellet.x === pacman.x && pellet.y === pacman.y) {
+      powerMode = true;
+      powerModeTimer = 300; // 10 seconds (30 frames per second)
+      return false;
+    }
+    return true;
+  });
+
+  // Check ghost collisions
+  ghosts = ghosts.filter(ghost => {
+    if (ghost.x === pacman.x && ghost.y === pacman.y) {
+      if (powerMode) {
+        score += 200;
+        return false;
+      } else {
+        gameOver();
+      }
+    }
+    return true;
+  });
+
+  // Check win condition
+  if (dots.length === 0 && ghosts.length === 0) {
+    win();
+  }
+}
+
+function gameOver() {
+  gameStarted = false;
+  messageDiv.textContent = 'Game Over! Press Enter to Restart';
+  messageDiv.style.display = 'block';
+  score = 0; // Reset score to 0 when losing
+}
+
+function win() {
+  currentLevel++;
+  if (currentLevel < mazes.length) {
+    messageDiv.textContent = 'You Win! Press Enter to Continue';
+    messageDiv.style.display = 'block';
+    gameStarted = false;
+  } else {
+    messageDiv.textContent = 'Congratulations! You Won All Levels! Press Enter to Restart';
+    messageDiv.style.display = 'block';
+    gameStarted = false;
+    currentLevel = 0;
+  }
+}
+
+function moveGhosts() {
+  ghosts.forEach(ghost => {
+    const directions = ['up', 'down', 'left', 'right'];
+    const validDirections = directions.filter(dir => {
+      let newX = ghost.x;
+      let newY = ghost.y;
+      switch (dir) {
+        case 'up': newY--; break;
+        case 'down': newY++; break;
+        case 'left': newX--; break;
+        case 'right': newX++; break;
+      }
+      return newX >= 0 && newX < maze[0].length && newY >= 0 && newY < maze.length && maze[newY][newX] !== '#';
+    });
+
+    if (validDirections.length > 0) {
+      const randomDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+      switch (randomDirection) {
+        case 'up': ghost.y--; break;
+        case 'down': ghost.y++; break;
+        case 'left': ghost.x--; break;
+        case 'right': ghost.x++; break;
+      }
+    }
+  });
+}
+
+let lastGhostMove = 0;
+const ghostMoveInterval = 500; // Move ghosts every 500ms (slow-paced)
+
+function spawnBigBall() {
+  const emptySpaces = [];
+  for (let y = 0; y < maze.length; y++) {
+    for (let x = 0; x < maze[y].length; x++) {
+      if (maze[y][x] === '.' && !powerPellets.some(pellet => pellet.x === x && pellet.y === y)) {
+        emptySpaces.push({ x, y });
+      }
+    }
+  }
+  if (emptySpaces.length > 0) {
+    const randomSpace = emptySpaces[Math.floor(Math.random() * emptySpaces.length)];
+    powerPellets.push(randomSpace);
+  }
+}
+
+function update(timestamp) {
+  if (!gameStarted || gamePaused) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawMaze();
+  drawDots();
+  drawPowerPellets();
+  drawPacman();
+  drawGhosts();
+
+  checkCollisions();
+
+  if (powerMode) {
+    powerModeTimer--;
+    if (powerModeTimer <= 0) {
+      powerMode = false;
+    }
+  }
+
+  if (timestamp - lastGhostMove > ghostMoveInterval) {
+    moveGhosts();
+    lastGhostMove = timestamp;
+  }
+
+  bigBallTimer++;
+  if (bigBallTimer >= 300) { // 10 seconds (30 frames per second)
+    spawnBigBall();
+    bigBallTimer = 0;
+  }
+
+  // Draw score
+  ctx.fillStyle = 'white';
+  ctx.font = '20px Arial';
+  ctx.fillText(`Score: ${score}`, 10, 30);
+
+  requestAnimationFrame(update);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (!gameStarted) {
+      gameStarted = true;
+      messageDiv.style.display = 'none';
+      initializeLevel();
+      requestAnimationFrame(update);
+    }
+  } else if (e.key === ' ') { // Spacebar
+    gamePaused = !gamePaused;
+    if (gamePaused) {
+      messageDiv.textContent = 'Paused';
+      messageDiv.style.display = 'block';
+    } else {
+      messageDiv.style.display = 'none';
+      requestAnimationFrame(update);
+    }
+  } else if (gameStarted && !gamePaused) {
+    let newX = pacman.x;
+    let newY = pacman.y;
+
+    switch (e.key) {
+      case 'ArrowUp': newY--; pacman.direction = 'up'; break;
+      case 'ArrowDown': newY++; pacman.direction = 'down'; break;
+      case 'ArrowLeft': newX--; pacman.direction = 'left'; break;
+      case 'ArrowRight': newX++; pacman.direction = 'right'; break;
+    }
+
+    if (newX >= 0 && newX < maze[0].length && newY >= 0 && newY < maze.length && maze[newY][newX] !== '#') {
+      pacman.x = newX;
+      pacman.y = newY;
+    }
+  }
+});
+
+messageDiv.style.display = 'block';
+</script>
+</body>
+</html>
